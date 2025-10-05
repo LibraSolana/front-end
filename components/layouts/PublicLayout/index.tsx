@@ -1,5 +1,5 @@
-import React from "react";
-import SideBar from "./SideBar";
+import React from 'react';
+import SideBar from './SideBar';
 
 type PublicLayoutProps = {
   children: React.ReactNode;
@@ -7,7 +7,7 @@ type PublicLayoutProps = {
 
 const PublicLayout = ({ children }: PublicLayoutProps) => {
   return (
-    <div className="flex min-h-screen bg-[#f6f4ed]">
+    <div className="flex min-h-screen bg-white">
       {/* Sidebar */}
       <SideBar />
 

@@ -1,5 +1,5 @@
 // sidebarConfig.ts
-import { BookOpen, Store, Gift, User } from "lucide-react";
+import { Store, Gift, User, Home } from 'lucide-react';
 
 export type SidebarItem = {
   label: string;
@@ -9,23 +9,23 @@ export type SidebarItem = {
 
 export const sidebarConfig: SidebarItem[] = [
   {
-    label: "Library",
-    path: "/library",
-    icon: BookOpen,
+    label: 'Home',
+    path: '/',
+    icon: Home,
   },
   {
-    label: "Marketplace",
-    path: "/marketplace",
+    label: 'Marketplace',
+    path: '/marketplace',
     icon: Store,
   },
   {
-    label: "Rewards",
-    path: "/rewards",
+    label: 'Rewards',
+    path: '/rewards',
     icon: Gift,
   },
   {
-    label: "My Books",
-    path: "/my-books",
+    label: 'My Library',
+    path: '/myLibrary',
     icon: User,
   },
 ];
