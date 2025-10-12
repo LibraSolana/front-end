@@ -1,3 +1,4 @@
+'use client';
 import Homepage from '@/pages/Homepage';
 import PublicLayout from 'components/layouts/PublicLayout';
 
