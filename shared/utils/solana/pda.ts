@@ -85,7 +85,10 @@ export class PDAUtils {
   static async hashTitle(title: string): Promise<Uint8Array> {
     const encoder = new TextEncoder();
     const data = encoder.encode(title);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashBuffer = await crypto.subtle.digest(
+      'SHA-256',
+      new Uint8Array(data)
+    );
     return new Uint8Array(hashBuffer);
   }
 }
