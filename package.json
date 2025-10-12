@@ -12,6 +12,7 @@
     "@coral-xyz/anchor": "^0.29.0",
     "@ebay/nice-modal-react": "^1.2.13",
     "@hookform/resolvers": "^5.2.2",
+    "@metaplex-foundation/js": "^0.20.1",
     "@next/font": "^14.2.15",
     "@pinata/sdk": "^2.1.0",
     "@project-serum/anchor": "^0.26.0",

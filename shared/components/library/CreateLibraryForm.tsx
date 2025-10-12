@@ -1,6 +1,7 @@
+// components/libraries/CreateLibraryForm.tsx
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -20,231 +21,252 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { BookOpen, AlignLeft, Coins, Clock, Key, Info } from 'lucide-react';
 
-import {
-  BookOpen,
-  AlignLeft,
-  Coins,
-  AlertTriangle,
-  Clock,
-  Key,
-} from 'lucide-react';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { TOKEN_2022_PROGRAM_ID, getMint } from '@solana/spl-token';
 
-// Yup schema validate
+// Mint mặc định PCOIN
+const PCOIN_MINT = 'HwBgz6m8XGAC3jJHYsLP2wdbm7b2NF8k9rhFianPGzRZ';
+
+// Kiểu chỉ dùng cho UI
+type UiForm = {
+  name: string;
+  description: string;
+  membershipFee: number; // đơn vị PCOIN
+  maxBorrowDays: number;
+};
+
 const schema = yup.object().shape({
   name: yup
     .string()
-    .min(3, 'Name must be at least 3 characters')
-    .max(100, 'Name cannot exceed 100 characters')
-    .required('Library name is required'),
-
+    .min(3, 'Ít nhất 3 ký tự')
+    .max(100, 'Tối đa 100 ký tự')
+    .required('Bắt buộc'),
   description: yup
     .string()
-    .min(10, 'Description must be at least 10 characters')
-    .max(500, 'Description cannot exceed 500 characters')
-    .required('Description is required'),
-
+    .min(10, 'Ít nhất 10 ký tự')
+    .max(500, 'Tối đa 500 ký tự')
+    .required('Bắt buộc'),
   membershipFee: yup
     .number()
-    .typeError('Membership fee must be a number')
-    .integer('Membership fee must be an integer')
-    .min(1, 'Must be greater than 0 lamports')
-    .required('Membership fee is required'),
-
-  lateFeePerDay: yup
-    .number()
-    .typeError('Late fee must be a number')
-    .integer('Late fee must be an integer')
-    .min(0, 'Late fee cannot be negative')
-    .required('Late fee is required'),
-
+    .typeError('Phải là số')
+    .min(0, 'Không âm')
+    .required('Bắt buộc'),
   maxBorrowDays: yup
     .number()
-    .typeError('Max borrow days must be a number')
-    .integer('Must be an integer')
-    .min(1, 'Must be at least 1 day')
-    .max(365, 'Cannot exceed 365 days')
-    .required('Max borrow days is required'),
-
-  paymentMint: yup
-    .string()
-    .required('Payment mint is required')
-    .length(44, 'Must be a valid Solana address (44 chars)'),
+    .typeError('Phải là số')
+    .integer('Phải là số nguyên')
+    .min(1, 'Tối thiểu 1')
+    .max(365, 'Tối đa 365')
+    .required('Bắt buộc'),
 });
 
 export function CreateLibraryForm() {
-  const form = useForm<CreateLibraryFormData>({
+  const form = useForm<UiForm>({
     resolver: yupResolver(schema),
     defaultValues: {
       name: '',
       description: '',
       membershipFee: 0,
-      lateFeePerDay: 0,
-      maxBorrowDays: 0,
-      paymentMint: '',
+      maxBorrowDays: 30,
     },
   });
 
   const { initializeLibrary, loading } = useInitializeLibrary();
   const [libraryAddress, setLibraryAddress] = useState<string | null>(null);
 
-  const onSubmit = async (values: CreateLibraryFormData) => {
-    const res = await initializeLibrary(values);
-    setLibraryAddress(res.libraryAddress);
-    form.reset();
-  };
-
-  // Helper render label with icon
-  const LabelWithIcon = ({
-    icon: Icon,
-    text,
-  }: {
-    icon: React.ElementType;
-    text: string;
-  }) => (
-    <FormLabel className="flex items-center gap-1">
-      <Icon size={16} className="text-muted-foreground" />
-      {text}
-    </FormLabel>
+  // Thông tin PCOIN để chuyển đổi sang raw units
+  const [mintDecimals, setMintDecimals] = useState<number | null>(null);
+  const [mintProgram, setMintProgram] = useState<'legacy' | '2022' | null>(
+    null
   );
 
+  useEffect(() => {
+    let abort = false;
+    (async () => {
+      try {
+        const mintPk = new PublicKey(PCOIN_MINT);
+        const conn = new Connection(
+          process.env.NEXT_PUBLIC_RPC_URL ||
+            'https://api.mainnet-beta.solana.com',
+          'confirmed'
+        );
+        const info = await conn.getAccountInfo(mintPk);
+        if (!info) return;
+        const p = info.owner.equals(TOKEN_2022_PROGRAM_ID) ? '2022' : 'legacy';
+        if (!abort) setMintProgram(p);
+        const mintAcc = await getMint(conn, mintPk, 'confirmed', info.owner);
+        if (!abort) setMintDecimals(mintAcc.decimals);
+      } catch {
+        if (!abort) {
+          setMintProgram('legacy');
+          setMintDecimals(6);
+        }
+      }
+    })();
+    return () => {
+      abort = true;
+    };
+  }, []);
+
+  const onSubmit = async (vals: UiForm) => {
+    const decimals = mintDecimals ?? 6;
+    const toAmount = (x: number) => Math.round(Number(x || 0) * 10 ** decimals);
+
+    // Map sang CreateLibraryFormData
+    const payload: CreateLibraryFormData = {
+      name: vals.name,
+      description: vals.description,
+      maxBorrowDays: vals.maxBorrowDays,
+      paymentMint: PCOIN_MINT,
+      membershipFee: toAmount(vals.membershipFee), // chỉ PCOIN
+      lateFeePerDay: 0, // ẩn khỏi UI
+    };
+
+    const res = await initializeLibrary(payload);
+    setLibraryAddress(res.libraryAddress);
+    form.reset({
+      name: '',
+      description: '',
+      membershipFee: 0,
+      maxBorrowDays: 30,
+    });
+  };
+
   return (
-    <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="grid md:grid-cols-2 gap-4"
-      >
-        {/* Name */}
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <LabelWithIcon icon={BookOpen} text="Library Name" />
-              <FormControl>
-                <Input placeholder="My Library" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Description */}
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem className="col-span-full">
-              <LabelWithIcon icon={AlignLeft} text="Description" />
-              <FormControl>
-                <Textarea
-                  placeholder="Write a short description..."
-                  rows={3}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Membership Fee */}
-        <FormField
-          control={form.control}
-          name="membershipFee"
-          render={({ field }) => (
-            <FormItem>
-              <LabelWithIcon icon={Coins} text="Membership Fee" />
-              <FormControl>
-                <Input type="number" placeholder="1000000" {...field} />
-              </FormControl>
-              <FormDescription>
-                💰 Tính theo <strong>lamports</strong> (1 SOL = 1,000,000,000
-                lamports)
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Late Fee */}
-        <FormField
-          control={form.control}
-          name="lateFeePerDay"
-          render={({ field }) => (
-            <FormItem>
-              <LabelWithIcon icon={AlertTriangle} text="Late Fee Per Day" />
-              <FormControl>
-                <Input type="number" placeholder="5000" {...field} />
-              </FormControl>
-              <FormDescription>
-                ⚠️ Phí phạt mỗi ngày trễ (đơn vị <strong>lamports</strong>)
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Max Borrow Days */}
-        <FormField
-          control={form.control}
-          name="maxBorrowDays"
-          render={({ field }) => (
-            <FormItem>
-              <LabelWithIcon icon={Clock} text="Max Borrow Days" />
-              <FormControl>
-                <Input type="number" placeholder="30" {...field} />
-              </FormControl>
-              <FormDescription>
-                ⏳ Số ngày tối đa có thể mượn sách
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Payment Mint */}
-        <FormField
-          control={form.control}
-          name="paymentMint"
-          render={({ field }) => (
-            <FormItem className="col-span-full">
-              <LabelWithIcon icon={Key} text="Payment Mint" />
-              <FormControl>
-                <Input
-                  placeholder="So11111111111111111111111111111111111111112"
-                  {...field}
-                />
-              </FormControl>
-              <FormDescription>
-                🔑 Public key của token mint (ví dụ: USDC, USDT, WSOL…)
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Buttons */}
-        <div className="col-span-full flex flex-wrap gap-3">
-          <Button type="submit" disabled={loading} className="flex-1">
-            {loading ? 'Creating...' : 'Create Library'}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={() => form.reset()}
-          >
-            Reset
-          </Button>
+    <Card className="border-muted shadow-sm">
+      <CardHeader className="space-y-1 p-4">
+        <CardTitle className="text-2xl">Tạo thư viện mới</CardTitle>
+        <div className="text-sm text-muted-foreground">
+          Thanh toán cố định bằng PCOIN. Tổng cung: 100,000,000 PCOIN.
         </div>
+      </CardHeader>
+      <Separator />
+      <CardContent className="pt-6">
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="grid md:grid-cols-2 gap-5"
+          >
+            {/* Tên */}
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" /> Tên thư viện
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder="Ví dụ: LibraX" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-        {libraryAddress && (
-          <span className="col-span-full text-xs text-muted-foreground truncate">
-            📚 Library PDA: {libraryAddress}
-          </span>
-        )}
-      </form>
-    </Form>
+            {/* Mô tả */}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem className="md:col-span-2">
+                  <FormLabel className="flex items-center gap-2">
+                    <AlignLeft className="h-4 w-4" /> Mô tả
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Giới thiệu ngắn gọn về thư viện..."
+                      rows={3}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Phí thành viên (PCOIN) */}
+            <FormField
+              control={form.control}
+              name="membershipFee"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <Coins className="h-4 w-4" /> Phí thành viên (PCOIN)
+                  </FormLabel>
+                  <FormControl>
+                    <Input type="number" placeholder="VD: 1" {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    Decimals PCOIN: {mintDecimals ?? '—'} • Chương trình:{' '}
+                    {mintProgram ?? '—'}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Số ngày mượn tối đa */}
+            <FormField
+              control={form.control}
+              name="maxBorrowDays"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" /> Số ngày mượn tối đa
+                  </FormLabel>
+                  <FormControl>
+                    <Input type="number" placeholder="30" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Hiển thị mint mặc định */}
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-2 mb-1">
+                <Key className="h-4 w-4" />
+                <span className="text-sm font-medium">Mint thanh toán</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge variant="default">PCOIN</Badge>
+                <code className="text-xs break-all">{PCOIN_MINT}</code>
+              </div>
+              <div className="text-xs text-muted-foreground flex items-start gap-2 mt-2">
+                <Info className="h-4 w-4 mt-0.5" />
+                <span>Mint cố định, không thể thay đổi.</span>
+              </div>
+            </div>
+
+            {/* Nút hành động */}
+            <div className="md:col-span-2 flex flex-wrap gap-3 pt-2">
+              <Button type="submit" disabled={loading} className="flex-1">
+                {loading ? 'Đang tạo...' : 'Tạo thư viện'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => form.reset()}
+              >
+                Đặt lại
+              </Button>
+            </div>
+
+            {libraryAddress && (
+              <div className="md:col-span-2 text-xs text-muted-foreground truncate">
+                📚 Library PDA: {libraryAddress}
+              </div>
+            )}
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
   );
 }

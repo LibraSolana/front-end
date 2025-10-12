@@ -1,3 +1,4 @@
+// app/providers/WalletContextProvider.tsx
 'use client';
 
 import React, { ReactNode, useMemo } from 'react';
@@ -23,29 +24,93 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Plus, BookOpen, Library } from 'lucide-react';
+import { Plus, BookOpen, Library, Coins, Menu } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import Sidebar from 'components/layouts/PublicLayout/SideBar';
+import { usePathname, useRouter } from 'next/navigation';
+import { cn } from 'lib/utils';
+import { sidebarConfig } from 'components/layouts/PublicLayout/SideBar/sidebarConfig';
+
+const MobileMenuList = () => {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  return (
+    <div className="p-3 w-72 space-y-2">
+      {sidebarConfig.map((item) => {
+        const active = pathname === item.path;
+        const Icon = item.icon;
+        return (
+          <Button
+            key={item.path}
+            onClick={() => router.push(item.path)}
+            variant={active ? 'secondary' : 'ghost'}
+            className={cn(
+              'w-full justify-start gap-2 rounded-[9px] shadow-none',
+              'hover:!bg-[#6450CB]/30 hover:!text-[#6450CB]'
+            )}
+          >
+            <Icon size={20} />
+            <span className="truncate">{item.label}</span>
+          </Button>
+        );
+      })}
+    </div>
+  );
+};
 
 const WalletContextProvider = ({ children }: { children: ReactNode }) => {
   const network = WalletAdapterNetwork.Devnet;
   const endpoint = useMemo(() => clusterApiUrl(network), [network]);
   const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
+
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={true}>
+      <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <div className="min-h-screen bg-white">
-            <header className="shadow-sm px-5 py-4 border-b border-gray-200">
-              <div className="flex justify-between items-center">
-                <Link href={'/'}>
-                  <div className="flex items-center gap-2">
-                    <Image src="/logo.svg" alt="logo" width={40} height={40} />
-                    <h1 className="text-sm lg:text-2xl font-bold">
-                      Libra Solana
-                    </h1>
+            {/* Header sticky */}
+            <header className="sticky top-0 z-50 shadow-sm px-4 md:px-5 py-3 border-b bg-white/80 backdrop-blur">
+              <div className="flex justify-between items-center gap-3">
+                {/* Left: Logo + mobile sheet trigger */}
+                <div className="flex items-center gap-2">
+                  <div className="md:hidden">
+                    <Sheet>
+                      <SheetTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Mở menu"
+                        >
+                          <Menu className="h-5 w-5" />
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent side="left" className="p-0 w-72">
+                        <SheetHeader className="px-4 py-3 border-b">
+                          <SheetTitle className="text-left">Menu</SheetTitle>
+                        </SheetHeader>
+                        {/* Mobile Menu from config */}
+                        <MobileMenuList />
+                      </SheetContent>
+                    </Sheet>
                   </div>
-                </Link>
-                <div className="flex items-center gap-3">
-                  {/* Dropdown for Create */}
+
+                  <Link href="/" className="flex items-center gap-2">
+                    <Image src="/logo.svg" alt="logo" width={32} height={32} />
+                    <h1 className="hidden md:block text-lg lg:text-2xl font-bold">
+                      Thư Viện Phi Tập Trung
+                    </h1>
+                  </Link>
+                </div>
+
+                {/* Right actions */}
+                <div className="flex items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -53,7 +118,7 @@ const WalletContextProvider = ({ children }: { children: ReactNode }) => {
                         className="flex items-center gap-2"
                       >
                         <Plus className="h-4 w-4" />
-                        Create
+                        <span className="hidden sm:inline">Tạo mới</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
@@ -62,7 +127,7 @@ const WalletContextProvider = ({ children }: { children: ReactNode }) => {
                           href="/library/create"
                           className="flex items-center gap-2"
                         >
-                          <Library className="h-4 w-4" /> Library
+                          <Library className="h-4 w-4" /> <span>Thư viện</span>
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
@@ -70,17 +135,34 @@ const WalletContextProvider = ({ children }: { children: ReactNode }) => {
                           href="/book/create"
                           className="flex items-center gap-2"
                         >
-                          <BookOpen className="h-4 w-4" /> Book
+                          <BookOpen className="h-4 w-4" /> <span>Sách</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link
+                          href="/token/create"
+                          className="flex items-center gap-2"
+                        >
+                          <Coins className="h-4 w-4" /> <span>Token</span>
                         </Link>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
 
-                  <WalletMultiButton className="!bg-white !text-black !rounded-xl !px-4 !py-2 hover:!bg-gray-100 shadow-md" />
+                  <WalletMultiButton className="!bg-white !text-black !rounded-xl !px-3 !py-2 hover:!bg-gray-100 shadow-sm border" />
                 </div>
               </div>
             </header>
-            <main className="p-3 mx-auto w-full ">{children}</main>
+
+            {/* Layout: desktop 2 cột, mobile 1 cột */}
+            <div className="md:grid md:grid-cols-[224px_1fr]">
+              {/* Desktop sidebar */}
+              <aside className="hidden md:block border-r min-h-[calc(100dvh-56px)]">
+                <Sidebar />
+              </aside>
+
+              <main className="p-3 md:p-5">{children}</main>
+            </div>
           </div>
         </WalletModalProvider>
       </WalletProvider>

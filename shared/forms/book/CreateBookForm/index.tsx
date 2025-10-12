@@ -1,7 +1,7 @@
 // components/forms/AddBookForm.tsx
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm, Resolver } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
@@ -20,15 +20,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   Card,
@@ -56,9 +48,15 @@ import {
   FileText,
   ShieldCheck,
 } from 'lucide-react';
+import { useConnection } from '@solana/wallet-adapter-react';
+import {
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  getMint,
+} from '@solana/spl-token';
 
 const currentYear = new Date().getFullYear();
-const LAMPORTS_PER_SOL = 1_000_000_000;
+const PCOIN_MINT = 'HwBgz6m8XGAC3jJHYsLP2wdbm7b2NF8k9rhFianPGzRZ';
 
 const schema: yup.ObjectSchema<any> = yup
   .object({
@@ -66,7 +64,7 @@ const schema: yup.ObjectSchema<any> = yup
     authorName: yup.string().min(2).max(100).required('Author required'),
     isbn: yup.string().max(20).notRequired().default(undefined),
     description: yup.string().max(2000).notRequired().default(undefined),
-    language: yup.string().max(50).notRequired().default(undefined),
+    language: yup.string().max(50).notRequired().default('vi'),
     publisher: yup.string().max(100).notRequired().default(undefined),
     category: yup
       .mixed()
@@ -91,7 +89,8 @@ const schema: yup.ObjectSchema<any> = yup
       .min(1)
       .max(365)
       .notRequired()
-      .default(undefined),
+      .default(14),
+    // Giá nhập theo PCOIN UI, sẽ convert sang raw ở onSubmit
     price: yup
       .number()
       .transform((v, o) => (o === '' || o == null ? undefined : Number(v)))
@@ -136,11 +135,33 @@ const LANG_OPTIONS = [
   { code: 'pt', label: 'Português' },
 ];
 
-const PRICE_PRESETS_SOL = ['0', '0.1', '0.25', '0.5', '1', '2', '5'];
-
 export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
   const { addBook, loading } = useBookOperations();
   const [result, setResult] = useState<any>(null);
+
+  const { connection } = useConnection();
+  const [pcoinDecimals, setPcoinDecimals] = useState<number>(6);
+
+  useEffect(() => {
+    let abort = false;
+    (async () => {
+      try {
+        const mintPk = new PublicKey(PCOIN_MINT);
+        const info = await connection.getAccountInfo(mintPk);
+        const program =
+          info && info.owner.equals(TOKEN_2022_PROGRAM_ID)
+            ? TOKEN_2022_PROGRAM_ID
+            : TOKEN_PROGRAM_ID;
+        const mintAcc = await getMint(connection, mintPk, 'confirmed', program);
+        if (!abort) setPcoinDecimals(mintAcc.decimals);
+      } catch {
+        if (!abort) setPcoinDecimals(6);
+      }
+    })();
+    return () => {
+      abort = true;
+    };
+  }, [connection]);
 
   const form = useForm<AddBookFormData>({
     resolver: yupResolver(schema) as unknown as Resolver<AddBookFormData, any>,
@@ -154,8 +175,8 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
       publisher: undefined,
       publicationYear: undefined,
       pages: undefined,
-      price: undefined,
-      rentalPrice: undefined,
+      price: undefined, // UI PCOIN (số thập phân)
+      rentalPrice: undefined, // UI PCOIN
       maxRentalDays: 14,
       isFree: false,
       isNft: false,
@@ -167,25 +188,22 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
 
   const isFree = form.watch('isFree');
 
-  // Helpers chuyển preset SOL -> lamports
-  const setPriceFromSol = (solStr: string) => {
-    const sol = Number(solStr);
-    if (Number.isFinite(sol))
-      form.setValue('price', Math.round(sol * LAMPORTS_PER_SOL), {
-        shouldValidate: true,
-      });
-  };
-  const setRentalFromSol = (solStr: string) => {
-    const sol = Number(solStr);
-    if (Number.isFinite(sol))
-      form.setValue('rentalPrice', Math.round(sol * LAMPORTS_PER_SOL), {
-        shouldValidate: true,
-      });
+  // Helpers: UI PCOIN -> raw units
+  const toRaw = (ui?: number | null) => {
+    if (ui == null || Number.isNaN(ui)) return undefined;
+    return Math.round(Number(ui) * 10 ** pcoinDecimals);
   };
 
   const onSubmit = async (data: AddBookFormData) => {
     try {
-      const res = await addBook(library, data);
+      const payload: AddBookFormData = {
+        ...data,
+        // chuyển giá từ đơn vị PCOIN UI sang raw units
+        price: data.isFree ? 0 : (toRaw(data.price as any) ?? 0),
+        rentalPrice:
+          data.rentalPrice != null ? toRaw(data.rentalPrice as any) : undefined,
+      };
+      const res = await addBook(library, payload);
       setResult(res);
       onSuccess?.(res);
       form.reset();
@@ -221,9 +239,9 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title</FormLabel>
+                  <FormLabel>Tiêu đề</FormLabel>
                   <FormControl>
-                    <Input placeholder="Book title" {...field} />
+                    <Input placeholder="Tên sách" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -234,9 +252,9 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="authorName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Author</FormLabel>
+                  <FormLabel>Tác giả</FormLabel>
                   <FormControl>
-                    <Input placeholder="Author name" {...field} />
+                    <Input placeholder="Tên tác giả" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -247,24 +265,20 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="language"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Language</FormLabel>
-                  <Select
-                    value={field.value as any}
-                    onValueChange={field.onChange}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select language" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
+                  <FormLabel>Ngôn ngữ</FormLabel>
+                  <div className="relative">
+                    <select
+                      className="w-full border rounded-md h-10 px-3 bg-background"
+                      value={field.value as any}
+                      onChange={(e) => field.onChange(e.target.value)}
+                    >
                       {LANG_OPTIONS.map((l) => (
-                        <SelectItem key={l.code} value={l.code}>
+                        <option key={l.code} value={l.code}>
                           {l.label}
-                        </SelectItem>
+                        </option>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </select>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
@@ -274,24 +288,20 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="category"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select
-                    value={field.value as any}
-                    onValueChange={field.onChange}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
+                  <FormLabel>Phân loại</FormLabel>
+                  <div className="relative">
+                    <select
+                      className="w-full border rounded-md h-10 px-3 bg-background"
+                      value={field.value as any}
+                      onChange={(e) => field.onChange(e.target.value)}
+                    >
                       {Object.values(BookCategory).map((cat) => (
-                        <SelectItem key={String(cat)} value={String(cat)}>
+                        <option key={String(cat)} value={String(cat)}>
                           {String(cat)}
-                        </SelectItem>
+                        </option>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </select>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
@@ -301,10 +311,13 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="description"
               render={({ field }) => (
                 <FormItem className="md:col-span-2">
-                  <FormLabel>Description</FormLabel>
+                  <FormLabel>Mô tả</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Short synopsis..." {...field} />
+                    <Textarea placeholder="Tóm tắt nội dung..." {...field} />
                   </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Viết mô tả ngắn gọn, tối đa 2000 ký tự.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -316,10 +329,10 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
         <Card>
           <CardHeader className="p-5">
             <CardTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5" /> Chi tiết & Giá
+              <Info className="h-5 w-5" /> Chi tiết & Giá (PCOIN)
             </CardTitle>
             <CardDescription>
-              ISBN, nhà xuất bản, năm phát hành, trang và giá
+              ISBN, nhà xuất bản, năm phát hành, trang và giá (đơn vị PCOIN)
             </CardDescription>
           </CardHeader>
           <CardContent className="grid md:grid-cols-3 gap-4">
@@ -341,9 +354,9 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="publisher"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Publisher</FormLabel>
+                  <FormLabel>Nhà xuất bản</FormLabel>
                   <FormControl>
-                    <Input placeholder="Publisher" {...field} />
+                    <Input placeholder="Nhà xuất bản" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -354,7 +367,7 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="publicationYear"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Publication Year</FormLabel>
+                  <FormLabel>Năm phát hành</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -379,7 +392,7 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="pages"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Pages</FormLabel>
+                  <FormLabel>Số trang</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -403,7 +416,7 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="copiesAvailable"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Copies Available</FormLabel>
+                  <FormLabel>Bản có sẵn</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -412,6 +425,9 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
                       onChange={(e) => field.onChange(Number(e.target.value))}
                     />
                   </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Số lượng bản có thể cho mượn/mua ngay.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}
@@ -421,7 +437,7 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="maxRentalDays"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Max Rental Days</FormLabel>
+                  <FormLabel>Ngày thuê tối đa</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -453,38 +469,27 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="flex items-center gap-2">
-                          <Coins className="h-4 w-4" /> Price (lamports)
+                          <Coins className="h-4 w-4" /> Giá mua (PCOIN)
                         </FormLabel>
-                        <div className="flex items-center gap-2">
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min={0}
-                              {...field}
-                              onChange={(e) =>
-                                field.onChange(
-                                  e.target.value === ''
-                                    ? undefined
-                                    : Number(e.target.value)
-                                )
-                              }
-                            />
-                          </FormControl>
-                          <Select onValueChange={setPriceFromSol}>
-                            <SelectTrigger className="w-[120px]">
-                              <SelectValue placeholder="SOL" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {PRICE_PRESETS_SOL.map((v) => (
-                                <SelectItem key={v} value={v}>
-                                  {v} SOL
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.000001"
+                            placeholder="Ví dụ: 1.5"
+                            value={(field.value as any) ?? ''}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ''
+                                  ? undefined
+                                  : Number(e.target.value)
+                              )
+                            }
+                          />
+                        </FormControl>
                         <p className="text-xs text-muted-foreground">
-                          Chọn preset theo SOL để tự quy đổi sang lamports.
+                          Nhập theo đơn vị PCOIN; hệ thống sẽ tự quy đổi sang
+                          raw units theo decimals {pcoinDecimals}.
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -496,38 +501,27 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="flex items-center gap-2">
-                          <Coins className="h-4 w-4" /> Rental/day (lamports)
+                          <Coins className="h-4 w-4" /> Giá thuê/ngày (PCOIN)
                         </FormLabel>
-                        <div className="flex items-center gap-2">
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min={0}
-                              {...field}
-                              onChange={(e) =>
-                                field.onChange(
-                                  e.target.value === ''
-                                    ? undefined
-                                    : Number(e.target.value)
-                                )
-                              }
-                            />
-                          </FormControl>
-                          <Select onValueChange={setRentalFromSol}>
-                            <SelectTrigger className="w-[120px]">
-                              <SelectValue placeholder="SOL" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {PRICE_PRESETS_SOL.map((v) => (
-                                <SelectItem key={v} value={v}>
-                                  {v} SOL
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.000001"
+                            placeholder="Ví dụ: 0.2"
+                            value={(field.value as any) ?? ''}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ''
+                                  ? undefined
+                                  : Number(e.target.value)
+                              )
+                            }
+                          />
+                        </FormControl>
                         <p className="text-xs text-muted-foreground">
-                          Phí thuê mỗi ngày; để trống nếu miễn phí thuê.
+                          Để trống nếu không hỗ trợ thuê; tính phí theo ngày tối
+                          đa {form.getValues('maxRentalDays') ?? 14} ngày.
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -540,7 +534,7 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
                 name="isFree"
                 render={({ field }) => (
                   <FormItem className="flex items-center gap-3">
-                    <FormLabel>Free Book</FormLabel>
+                    <FormLabel>Sách miễn phí</FormLabel>
                     <FormControl>
                       <Switch
                         checked={!!field.value}
@@ -585,7 +579,7 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="coverUrl"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Cover Image</FormLabel>
+                  <FormLabel>Ảnh bìa</FormLabel>
                   <div className="flex items-center gap-3">
                     <Input placeholder="https://..." {...field} />
                     <IpfsUploader
@@ -612,7 +606,7 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
               name="fileUrl"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Book File (PDF/EPUB)</FormLabel>
+                  <FormLabel>File sách (PDF/EPUB)</FormLabel>
                   <div className="flex items-center gap-3">
                     <Input placeholder="https://..." {...field} />
                     <IpfsUploader
@@ -630,17 +624,18 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
 
         <div className="flex gap-3">
           <Button type="submit" disabled={loading} className="flex-1">
-            {loading ? 'Adding...' : 'Add Book'}
+            {loading ? 'Đang thêm...' : 'Thêm sách'}
           </Button>
           <Button type="button" variant="outline" onClick={() => form.reset()}>
-            Reset
+            Đặt lại
           </Button>
         </div>
 
         {result && (
           <div className="text-sm text-muted-foreground space-y-1">
             <p>
-              ✅ Book added: {result.book?.toBase58?.() ?? String(result.book)}
+              ✅ Đã thêm sách:{' '}
+              {result.book?.toBase58?.() ?? String(result.book)}
             </p>
             <p>📝 TX: {result.signature}</p>
             {result.explorerUrl && (
@@ -650,7 +645,7 @@ export function AddBookForm({ library, onSuccess }: AddBookFormProps) {
                 rel="noreferrer"
                 className="text-blue-500 underline"
               >
-                View on Explorer
+                Xem trên Explorer
               </a>
             )}
           </div>

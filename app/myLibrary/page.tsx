@@ -3,13 +3,10 @@
 import React from 'react';
 import LibraryPage from '@/pages/LibraryPage';
 import PublicLayout from 'components/layouts/PublicLayout';
+import MyProfilePage from '@/pages/LibraryPage';
 
 const Page = () => {
-  return (
-    <PublicLayout>
-      <LibraryPage />
-    </PublicLayout>
-  );
+  return <MyProfilePage />;
 };
 
 export default Page;

@@ -89,3 +89,19 @@ export class PDAUtils {
     return new Uint8Array(hashBuffer);
   }
 }
+
+const ENC = new TextEncoder();
+
+export function pdaMember(library: PublicKey, user: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [ENC.encode('member'), library.toBuffer(), user.toBuffer()],
+    PROGRAM_ID
+  );
+}
+
+export function pdaReview(book: PublicKey, user: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [ENC.encode('review'), book.toBuffer(), user.toBuffer()],
+    PROGRAM_ID
+  );
+}

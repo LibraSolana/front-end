@@ -5,11 +5,7 @@ import PublicLayout from 'components/layouts/PublicLayout';
 import BookDetailPage from '@/pages/BookDetailPage';
 
 const Page = () => {
-  return (
-    <PublicLayout>
-      <BookDetailPage />
-    </PublicLayout>
-  );
+  return <BookDetailPage />;
 };
 
 export default Page;

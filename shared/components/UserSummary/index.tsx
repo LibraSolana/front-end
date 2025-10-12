@@ -34,7 +34,7 @@ export default function WalletCard({ ddlMint }: WalletCardProps) {
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <CircleDollarSign size={16} className="text-gray-700" />
-            <span>{ddl !== null ? ddl.toLocaleString() : '0'} DDL</span>
+            <span>{ddl !== null ? ddl.toLocaleString() : '0'} PCOIN</span>
           </div>
         </div>
       </div>

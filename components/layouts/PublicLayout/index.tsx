@@ -7,12 +7,10 @@ type PublicLayoutProps = {
 
 const PublicLayout = ({ children }: PublicLayoutProps) => {
   return (
-    <div className="flex min-h-screen bg-white">
-      {/* Sidebar */}
-      <SideBar />
-
-      {/* Main content */}
-      <main className="flex-1 p-6">{children}</main>
+    <div className="min-h-screen">
+      <div className="md:grid md:grid-cols-[224px_1fr] gap-0">
+        <main className="p-1 lg:p-4">{children}</main>
+      </div>
     </div>
   );
 };
