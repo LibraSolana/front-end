@@ -1,7 +1,6 @@
 // Sidebar.tsx
 'use client';
 
-import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { sidebarConfig } from './sidebarConfig';
 import { usePathname, useRouter } from 'next/navigation';
