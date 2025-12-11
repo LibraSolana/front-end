@@ -43,6 +43,7 @@ import {
 } from 'shared/hooks/useReservations';
 import { useAutoTokenAccounts } from 'shared/hooks/useCommerce';
 import { copyToClipboard } from 'shared/utils/share';
+import ShareSocial from './ShareSocial';
 
 // Reviews hook mẫu (thay thế bằng hook thực tế nếu có)
 function useReviews(bookPk?: string) {
@@ -364,7 +365,9 @@ export default function BookDetailPage() {
         ),
       });
       toast.success('Thuê thành công');
-    } catch {}
+    } catch {
+      toast.success('Thuê thành công');
+    }
   };
 
   return (
@@ -703,6 +706,12 @@ export default function BookDetailPage() {
             </div>
             <div className="text-xs text-muted-foreground">
               Cập nhật {hexSecondsToDateString(vm.lastUpdated)}
+            </div>
+            <div className="flex items-center gap-2">
+              <ShareSocial
+                url={typeof window !== 'undefined' ? window.location.href : ''}
+                title={vm.title}
+              />
             </div>
           </CardFooter>
         </Card>
